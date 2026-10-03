@@ -17,6 +17,8 @@ var t = J.table('full', 100, 5000, 4);
 eq(t[3].max, 800, 'full max'); eq(t[3].expected, 400, 'full exp'); eq(t[3].cumMax, 1500, 'cum max'); eq(t[3].cumExpected, 750, 'cum exp');
 t = J.table('equal', 100, 5000, 3); eq(t[2].min, 200, 'equal min'); eq(t[2].expected, 300, 'equal exp'); eq(t[2].cumExpected, 525, 'equal cum exp');
 t = J.table('none', 100, 5000, 3); eq(t[2].cumMax, 700, 'none cum');
+t = J.table('decorrelated', 100, 5000, 5); eq(t[0].max, 300, 'deco max 1'); eq(t[1].max, 900, 'deco max 2'); eq(t[2].max, 2700, 'deco max 3'); eq(t[3].max, 5000, 'deco max 4 capped'); eq(t[4].cumMax, 300 + 900 + 2700 + 5000 + 5000, 'deco cum max');
+for (var sd = 1; sd <= 200; sd++) { var rr = J.rng(sd), pv = 100, tt = J.table('decorrelated', 100, 5000, 12); for (var k = 0; k < 12; k++) { pv = J.sleepFor('decorrelated', 100, 5000, k, pv, rr()); if (pv > tt[k].max + 1e-9) eq(1, 0, 'deco beyond max'); } }
 // invariants over many seeds
 ['none', 'full', 'equal', 'decorrelated'].forEach(function (s) {
   for (var seed = 1; seed <= 200; seed++) { var r = J.rng(seed), prev = 100; for (var i = 0; i < 12; i++) { var v = J.sleepFor(s, 100, 5000, i, prev, r()); prev = v; if (!(v >= 0 && v <= 5000)) eq(1, 0, 'bound ' + s); if (s !== 'full' && v < 100 - 1e-9 && s !== 'none' && s !== 'equal') eq(1, 0, 'floor ' + s); } }
