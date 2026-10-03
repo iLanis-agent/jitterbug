@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JitterBug - retry backoff and jitter calculator</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:#1a1608; color:#f3ede6; line-height:1.5; }
+  .wrap { max-width:700px; margin:0 auto; padding:26px 16px 50px; }
+  h1 { font-size:28px; } h1 span { color:#fbbf24; }
+  .sub { color:#b5aa9c; margin:6px 0 16px; }
+  .card { background:#2b2410; border-radius:14px; padding:14px; margin-bottom:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
+  label { font-size:12px; color:#b5aa9c; display:block; margin-bottom:3px; }
+  input,select { width:100%; background:#1a1608; color:#f3ede6; border:1px solid #574f48; border-radius:8px; padding:8px; font-size:15px; font-family:inherit; }
+  button { background:#7a5a0a; color:#f3ede6; border:0; padding:8px 14px; border-radius:8px; cursor:pointer; font-size:14px; margin-right:6px; margin-top:10px; }
+  table { width:100%; border-collapse:collapse; } td,th { text-align:left; padding:8px 4px; border-bottom:1px solid #433c36; } th { font-size:12px; color:#b5aa9c; font-weight:600; }
+  td.v { font-size:22px; font-weight:800; color:#fbbf24; } tr.me td.v { color:#f3ede6; }
+  .stats { display:flex; gap:22px; flex-wrap:wrap; margin-top:12px; } .stats b { display:block; font-size:20px; } .muted { color:#b5aa9c; font-size:13px; }
+  .err { color:#ff9c8a; } .note { font-size:12.5px; color:#8c8174; margin-top:6px; }
+
+  td.v { font-size:17px; } td, th { font-size:14px; } .bar { height:10px; background:#1a1608; border-radius:6px; overflow:hidden; margin-top:6px; } .bar i { display:block; height:100%; background:#fbbf24; } .bar i.over { background:#ff7b72; } .no { color:#ff9c8a; }
+  .cb { display:inline-flex; align-items:center; gap:4px; margin-right:12px; font-size:14px; color:#f3ede6; } .cb input { width:auto; } .big { font-family:monospace; font-size:26px; font-weight:800; color:#fbbf24; } td.v.m { font-family:monospace; }
+  textarea { width:100%; background:#1a1608; color:#f3ede6; border:1px solid #574f48; border-radius:8px; padding:8px; font-size:14px; font-family:monospace; min-height:110px; } .ok { color:#86efac; font-weight:700; } .no { color:#ff9c8a; } td.m { font-family:monospace; } .chip { display:inline-block; font-family:monospace; background:#1a1608; border-radius:6px; padding:2px 6px; margin:2px 4px 2px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Jitter<span>Bug</span></h1>
+  <div class="sub">Set your retry policy. See every wait, the worst case, how many retries fit your deadline, and how the jitter types compare.</div>
+  <div class="card">
+    <div class="grid">
+      <div><label>Base delay (ms)</label><input id="base" value="100"></div>
+      <div><label>Cap (ms)</label><input id="cap" value="5000"></div>
+      <div><label>Retries</label><input id="n" value="8"></div>
+      <div><label>Jitter</label><select id="s"><option value="full">Full</option><option value="equal">Equal</option><option value="decorrelated">Decorrelated</option><option value="none">None</option></select></div>
+      <div><label>Time per attempt (ms)</label><input id="at" value="200"></div>
+      <div><label>Deadline (ms)</label><input id="dl" value="10000"></div>
+      <div><label>Chance one try fails (0 to 1)</label><input id="p" value="0.3"></div>
+    </div>
+    <div id="err" class="err"></div>
+    <div id="sum" style="margin-top:10px"></div>
+  </div>
+  <div class="card"><div id="tbl"></div></div>
+  <div class="card">
+    <h2 style="margin:0 0 8px;font-size:15px">Compare the four</h2>
+    <div id="cmp"></div>
+  </div>
+  <div class="card">
+    <h2 style="margin:0 0 8px;font-size:15px">One random run</h2>
+    <div id="roll" style="font-family:monospace;font-size:14px"></div>
+    <button id="again">Roll again</button>
+  </div>
+  <div class="note">Formulas (attempt counts from 0): none = min(cap, base * 2^attempt); full = random(0, min(cap, base * 2^attempt)); decorrelated = min(cap, random(base, previous sleep * 3)), as in the AWS Architecture Blog post "Exponential Backoff And Jitter". Equal jitter (half the backoff plus a random half) is from the same post, but its formula is in an image that I could not read as text, so it is written from memory of that post. Full and equal are exact (minimum, maximum, expected). Decorrelated depends on the previous sleep, so its averages are a seeded simulation of 20,000 runs and marked with ~. "Worst case" assumes every sleep takes its maximum and every attempt takes the time you entered. The chance that all tries fail assumes failures are independent, which a real outage is not. Retry only requests that are safe to repeat. Runs in your browser, nothing stored.</div>
+</div>
+<script src="engine.js"></script>
+<script>
+(function () {
+  var J = window.JitterBug, $ = function (i) { return document.getElementById(i); };
+  var NAMES = { none: 'None', full: 'Full', equal: 'Equal', decorrelated: 'Decorrelated' };
+  function ms(x) { if (x >= 60000) return (x / 60000).toFixed(1) + ' min'; if (x >= 1000) return (x / 1000).toFixed(2).replace(/\.?0+$/, '') + ' s'; return Math.round(x) + ' ms'; }
+  function num(id) { var v = parseFloat($(id).value); return isNaN(v) ? null : v; }
+  function exactOrSim(s, base, cap, n) {
+    if (s !== 'decorrelated') return { rows: J.table(s, base, cap, n), approx: false };
+    var sim = J.simulate(s, base, cap, n, 20000, 11), rows = J.table(s, base, cap, n), cum = 0;
+    rows.forEach(function (r, i) { r.expected = sim.means[i]; cum += sim.means[i]; r.cumExpected = cum; });
+    return { rows: rows, approx: true };
+  }
+  function run() {
+    var base = num('base'), cap = num('cap'), n = parseInt($('n').value, 10), at = num('at'), dl = num('dl'), p = num('p'), s = $('s').value;
+    if (base === null || base <= 0 || cap === null || cap < base || isNaN(n) || n < 1 || n > 30 || at === null || at < 0 || dl === null || dl <= 0 || p === null || p < 0 || p > 1) {
+      $('err').textContent = 'Check the numbers: base above 0, cap at least the base, 1 to 30 retries, deadline above 0, failure chance between 0 and 1.';
+      $('sum').innerHTML = ''; $('tbl').innerHTML = ''; $('cmp').innerHTML = ''; $('roll').innerHTML = ''; return;
+    }
+    $('err').textContent = '';
+    var e = exactOrSim(s, base, cap, n), rows = e.rows, last = rows[rows.length - 1], tilde = e.approx ? '~' : '';
+    var fit = J.retriesWithin(s, base, cap, dl, at, 30), worst = last.cumMax + at * (n + 1);
+    $('sum').innerHTML = '<div class="stats"><div><b>' + ms(last.cumMax) + '</b>longest total waiting</div><div><b>' + tilde + ms(last.cumExpected) + '</b>expected total waiting if all fail</div><div><b>' + ms(worst) + '</b>worst case with attempt time</div><div><b>' + (J.allFail(p, n) * 100).toPrecision(3) + '%</b>chance all ' + (n + 1) + ' tries fail</div></div>' +
+      '<div style="margin-top:10px">' + (worst <= dl ? '<span class="ok">All ' + n + ' retries fit</span> inside the ' + ms(dl) + ' deadline, even in the worst case.' : '<span class="no">Not all ' + n + ' retries fit</span> in ' + ms(dl) + ' in the worst case. About <b>' + fit + '</b> retries are guaranteed to fit.') + '</div>';
+    var h = '<table><tr><th>Retry</th><th>Wait range</th><th>Expected</th><th>Total so far (max)</th></tr>';
+    rows.forEach(function (r) { h += '<tr><td>' + r.retry + '</td><td class="m">' + ms(r.min) + ' to ' + ms(r.max) + '</td><td class="m">' + tilde + ms(r.expected) + '</td><td class="m">' + ms(r.cumMax) + '</td></tr>'; });
+    $('tbl').innerHTML = h + '</table>';
+    var c = '<table><tr><th>Jitter</th><th>Longest total</th><th>Expected total</th><th>First wait spread</th></tr>';
+    ['none', 'full', 'equal', 'decorrelated'].forEach(function (k) {
+      var x = exactOrSim(k, base, cap, n), l = x.rows[x.rows.length - 1], first = x.rows[0];
+      c += '<tr' + (k === s ? ' class="me"' : '') + '><td>' + NAMES[k] + '</td><td class="m">' + ms(l.cumMax) + '</td><td class="m">' + (x.approx ? '~' : '') + ms(l.cumExpected) + '</td><td class="m">' + ms(first.min) + ' to ' + ms(first.max) + '</td></tr>';
+    });
+    $('cmp').innerHTML = c + '</table><div class="muted" style="margin-top:6px">A wider first-wait spread is what pulls a crowd of clients apart. None gives every client the same wait.</div>';
+    var rnd = J.rng(Math.floor(Math.random() * 1e9)), prev = base, out = [], tot = 0;
+    for (var i = 0; i < n; i++) { var v = J.sleepFor(s, base, cap, i, prev, rnd()); prev = v; tot += v; out.push(ms(v)); }
+    $('roll').innerHTML = out.join(' &rarr; ') + '<div class="muted" style="margin-top:6px;font-family:inherit">Total waiting this run: ' + ms(tot) + '</div>';
+  }
+  ['base', 'cap', 'n', 'at', 'dl', 'p'].forEach(function (i) { $(i).oninput = run; }); $('s').onchange = run; $('again').onclick = run;
+  run();
+})();
+</script>
+</body>
+</html>
