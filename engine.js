@@ -14,13 +14,13 @@
   }
   // exact min / max / expected per retry for the memoryless strategies
   function table(strategy, base, cap, retries) {
-    var rows = [], cumMin = 0, cumMax = 0, cumExp = 0;
+    var rows = [], cumMin = 0, cumMax = 0, cumExp = 0, dmax = base;
     for (var i = 0; i < retries; i++) {
       var c = ceiling(base, cap, i), mn, mx, ex;
       if (strategy === 'none') { mn = mx = ex = c; }
       else if (strategy === 'full') { mn = 0; mx = c; ex = c / 2; }
       else if (strategy === 'equal') { mn = c / 2; mx = c; ex = c * 0.75; }
-      else { mn = base; mx = cap; ex = null; }
+      else { mn = base; dmax = Math.min(cap, dmax * 3); mx = dmax; ex = null; }
       cumMin += mn; cumMax += mx; cumExp = ex === null ? null : cumExp + ex;
       rows.push({ retry: i + 1, ceiling: c, min: mn, max: mx, expected: ex, cumMax: cumMax, cumExpected: cumExp });
     }
