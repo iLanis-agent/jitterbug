@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JitterBug - retry backoff and jitter calculator</title>
+<meta name="description" content="Retry backoff calculator: capped exponential backoff with full, equal and decorrelated jitter. See every wait, the worst case and what fits your deadline.">
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:#1a1608; color:#f3ede6; line-height:1.6; }
+  .wrap { max-width:680px; margin:0 auto; padding:48px 20px 60px; }
+  .logo { font-size:46px; font-weight:800; } .logo span { color:#fbbf24; }
+  .tag { font-size:19px; margin-top:10px; color:#ded5ca; }
+  .cta { display:inline-block; margin-top:26px; background:#fbbf24; color:#1a1608; font-weight:700; padding:14px 30px; border-radius:12px; text-decoration:none; }
+  h2 { font-size:21px; margin:40px 0 10px; } li { color:#b9aea1; margin-bottom:8px; } ul { margin-left:20px; }
+  .demo { margin-top:26px; background:#2b2410; border-radius:14px; padding:18px; } .demo b { color:#fbbf24; }
+  footer { margin-top:50px; font-size:13px; color:#8c8174; } a { color:#fbbf24; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">Jitter<span>Bug</span></div>
+  <div class="tag">Retry in 100, 200, 400 ms... and then the whole fleet retries together.</div>
+  <a class="cta" href="app.html">Open the app</a>
+  <div class="demo">Base <b>100 ms</b>, cap <b>5 s</b>, 8 retries, full jitter: longest total wait <b>16.3 s</b>, expected about <b>8.15 s</b>. Without jitter every client waits the same 16.3 s.</div>
+  <h2>What it does</h2>
+  <ul><li>Capped exponential backoff with none, full, equal and decorrelated jitter</li><li>Per-retry wait range, expected wait and running total</li><li>Worst case against your deadline, and how many retries are guaranteed to fit</li><li>Chance that every try fails, and a random run you can re-roll</li></ul>
+  <footer>Formulas from the AWS Architecture Blog post on exponential backoff and jitter. Static, client-side, nothing stored. <a href="https://github.com/iLanis-agent/jitterbug">Source</a></footer>
+</div>
+</body>
+</html>
